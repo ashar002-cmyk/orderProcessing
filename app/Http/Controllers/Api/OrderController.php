@@ -124,8 +124,7 @@ class OrderController extends BaseApiController
         $user->update(['order_sync_status' => 'running']);
 
         // Dispatch the sync job to queue (non-blocking)
-        SyncShopifyOrdersJob::dispatch($user->id)
-            ->onQueue(env('ORDER_SYNC_QUEUE', 'default'));
+        SyncShopifyOrdersJob::dispatch($user->id)->onQueue('default');
 
         return $this->success(null, 'Order sync started. Check sync status for progress.');
     }

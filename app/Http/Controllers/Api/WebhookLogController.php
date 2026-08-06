@@ -56,8 +56,7 @@ class WebhookLogController extends BaseApiController
             return $this->error('Only failed webhook events can be retried.', 422);
         }
 
-        dispatch(new RetryFailedWebhookJob($event->id))
-            ->onQueue(env('WEBHOOK_QUEUE', 'webhooks'));
+        dispatch(new RetryFailedWebhookJob($event->id))->onQueue('default');
 
         return $this->success(null, 'Retry dispatched. Check the event status shortly.');
     }

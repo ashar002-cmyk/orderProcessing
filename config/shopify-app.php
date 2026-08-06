@@ -521,9 +521,9 @@ return [
     */
 
     'job_queues' => [
-        'webhooks' => env('WEBHOOKS_JOB_QUEUE', null),
-        'scripttags' => env('SCRIPTTAGS_JOB_QUEUE', null),
-        'after_authenticate' => env('AFTER_AUTHENTICATE_JOB_QUEUE', null),
+        'webhooks' => 'default',
+        'scripttags' => 'default',
+        'after_authenticate' => 'default',
     ],
     /*
     |--------------------------------------------------------------------------

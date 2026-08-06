@@ -29,7 +29,7 @@ class ProcessShopifyWebhookJob implements ShouldQueue
 
     public function __construct(protected int $webhookEventId)
     {
-        $this->onQueue('dedault');
+        $this->onQueue('default');
     }
 
     public function handle(WebhookEventService $service): void
