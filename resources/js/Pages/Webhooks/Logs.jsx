@@ -363,7 +363,7 @@ export default function WebhookLogs({ webhooks }) {
                                     Webhook monitoring
                                 </div>
                                 <div style={{ fontSize: '25px', fontWeight: 850, marginTop: '6px' }}>
-                                    Shopify event delivery center
+                                    Shopify event delivery center 11111
                                 </div>
                                 <div style={{ fontSize: '13px', opacity: 0.82, marginTop: '7px', maxWidth: '620px' }}>
                                     Track order webhooks, processing attempts, failed deliveries, and retry activity from one clean operational view.
