@@ -50,7 +50,7 @@ class ShopifyOrderSyncService
             'started_at' => now(),
         ]);
 
-        $limit  = (int) env('ORDER_SYNC_LIMIT', 50);
+        $limit  = (int) env('ORDER_SYNC_LIMIT', 5000);
         $cursor = null;
 
         $totalRecords  = 0;
