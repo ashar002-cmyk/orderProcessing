@@ -364,7 +364,7 @@ export default function Dashboard({ stats = {} }) {
                     subtitle="A clear operational view of Shopify order processing, timeline events, webhooks, and sync health."
                     primaryAction={
                         <Button variant="primary" loading={syncing} onClick={handleSync}>
-                            Sync Orders
+                            Sync Orders1111
                         </Button>
                     }
                     secondaryActions={[
