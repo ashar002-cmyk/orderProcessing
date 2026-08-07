@@ -40,6 +40,9 @@ class ShopifyOrderSyncService
      */
     public function sync(User $user, int $limit = 50): SyncLog
     {
+        $startedAt = microtime(true);
+        $limit = max(1, min($limit, 250));
+
         $syncLog = SyncLog::create([
             'user_id'    => $user->id,
             'sync_type'  => 'orders',
@@ -51,13 +54,75 @@ class ShopifyOrderSyncService
         $totalRecords  = 0;
         $syncedRecords = 0;
         $failedRecords = 0;
+        $page = 0;
+
+        SyncLog::where('user_id', $user->id)
+            ->where('status', 'running')
+            ->whereKeyNot($syncLog->id)
+            ->update([
+                'status' => 'failed',
+                'error_message' => 'Superseded by a newer order sync.',
+                'completed_at' => now(),
+            ]);
+
+        Log::info('[OrderSync] Sync started', [
+            'sync_log_id' => $syncLog->id,
+            'user_id' => $user->id,
+            'shop' => $user->shopify_domain ?? $user->name,
+            'page_size' => $limit,
+            'local_orders_before' => ShopifyOrder::where('user_id', $user->id)->count(),
+        ]);
+
+        try {
+            $scopes = $this->graphql->getGrantedAccessScopes($user);
+            $hasAllOrdersAccess = in_array('read_all_orders', $scopes, true);
+
+            Log::info('[OrderSync] Shopify access scopes checked', [
+                'sync_log_id' => $syncLog->id,
+                'scopes' => $scopes,
+                'has_read_all_orders' => $hasAllOrdersAccess,
+            ]);
+
+            if (! $hasAllOrdersAccess) {
+                Log::warning('[OrderSync] Historical orders are not accessible', [
+                    'sync_log_id' => $syncLog->id,
+                    'shop' => $user->shopify_domain ?? $user->name,
+                    'required_scope' => 'read_all_orders',
+                    'effect' => 'Shopify only returns orders from the default recent-order window.',
+                ]);
+            }
+        } catch (Throwable $e) {
+            Log::warning('[OrderSync] Could not inspect Shopify access scopes', [
+                'sync_log_id' => $syncLog->id,
+                'exception' => $e::class,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         try {
             do {
+                $page++;
+                Log::info('[OrderSync] Requesting Shopify order page', [
+                    'sync_log_id' => $syncLog->id,
+                    'page' => $page,
+                    'page_size' => $limit,
+                    'has_cursor' => $cursor !== null,
+                ]);
+
                 $result   = $this->graphql->getOrders($user, $cursor, $limit);
                 $orders   = $result['orders'];
                 $hasNext  = $result['hasNextPage'];
                 $cursor   = $result['endCursor'];
+
+                Log::info('[OrderSync] Shopify order page received', [
+                    'sync_log_id' => $syncLog->id,
+                    'page' => $page,
+                    'orders_received' => count($orders),
+                    'has_next_page' => $hasNext,
+                    'has_end_cursor' => $cursor !== null,
+                    'first_order' => $orders[0]['name'] ?? null,
+                    'last_order' => $orders[array_key_last($orders)]['name'] ?? null,
+                ]);
 
                 $totalRecords += count($orders);
 
@@ -68,8 +133,14 @@ class ShopifyOrderSyncService
                     } catch (Throwable $e) {
                         $failedRecords++;
                         Log::warning('[ShopifyOrderSyncService] Failed to save order', [
+                            'sync_log_id' => $syncLog->id,
+                            'page' => $page,
                             'order' => $orderNode['id'] ?? null,
+                            'order_name' => $orderNode['name'] ?? null,
+                            'exception' => $e::class,
                             'error' => $e->getMessage(),
+                            'file' => $e->getFile(),
+                            'line' => $e->getLine(),
                         ]);
                     }
                 }
@@ -79,6 +150,14 @@ class ShopifyOrderSyncService
                     'total_records'  => $totalRecords,
                     'synced_records' => $syncedRecords,
                     'failed_records' => $failedRecords,
+                ]);
+
+                Log::info('[OrderSync] Page persisted', [
+                    'sync_log_id' => $syncLog->id,
+                    'page' => $page,
+                    'total_received' => $totalRecords,
+                    'total_synced' => $syncedRecords,
+                    'total_failed' => $failedRecords,
                 ]);
 
             } while ($hasNext && $cursor);
@@ -96,10 +175,32 @@ class ShopifyOrderSyncService
                 'order_sync_status' => 'completed',
             ]);
 
+            Log::info('[OrderSync] Sync completed', [
+                'sync_log_id' => $syncLog->id,
+                'user_id' => $user->id,
+                'shop' => $user->shopify_domain ?? $user->name,
+                'pages' => $page,
+                'received' => $totalRecords,
+                'synced' => $syncedRecords,
+                'failed' => $failedRecords,
+                'local_orders_after' => ShopifyOrder::where('user_id', $user->id)->count(),
+                'duration_seconds' => round(microtime(true) - $startedAt, 2),
+            ]);
+
         } catch (Throwable $e) {
             Log::error('[ShopifyOrderSyncService] Sync failed', [
+                'sync_log_id' => $syncLog->id,
                 'user_id' => $user->id,
+                'shop' => $user->shopify_domain ?? $user->name,
+                'page' => $page,
+                'received' => $totalRecords,
+                'synced' => $syncedRecords,
+                'failed' => $failedRecords,
+                'exception' => $e::class,
                 'error'   => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'duration_seconds' => round(microtime(true) - $startedAt, 2),
             ]);
 
             $syncLog->update([
@@ -109,6 +210,8 @@ class ShopifyOrderSyncService
             ]);
 
             $user->update(['order_sync_status' => 'failed']);
+
+            throw $e;
         }
 
         return $syncLog;

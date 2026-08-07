@@ -29,10 +29,11 @@ class SyncShopifyOrdersJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int    $tries   = 3;
-    public int $timeout = 120;
+    public int $timeout = 900;
+    public bool $failOnTimeout = true;
     public array $backoff = [30, 60, 120];
 
-    public function __construct(public int $userId, public int $limit = 50)
+    public function __construct(public int $userId, public int $limit = 250)
     {
         $this->onQueue('default');
     }
@@ -46,11 +47,28 @@ class SyncShopifyOrdersJob implements ShouldQueue
             return;
         }
 
-        Log::info('[SyncShopifyOrdersJob] Starting sync', ['shop' => $user->shopify_domain]);
+        Log::info('[SyncShopifyOrdersJob] Starting sync', [
+            'job_id' => $this->job?->getJobId(),
+            'attempt' => $this->attempts(),
+            'user_id' => $user->id,
+            'shop' => $user->shopify_domain ?? $user->name,
+            'page_size' => $this->limit,
+            'queue' => $this->queue ?? 'default',
+            'timeout_seconds' => $this->timeout,
+        ]);
 
         $user->update(['order_sync_status' => 'running']);
 
-        $syncService->sync($user, $this->limit);
+        $syncLog = $syncService->sync($user, $this->limit);
+
+        Log::info('[SyncShopifyOrdersJob] Job completed', [
+            'job_id' => $this->job?->getJobId(),
+            'sync_log_id' => $syncLog->id,
+            'user_id' => $user->id,
+            'status' => $syncLog->status,
+            'synced_records' => $syncLog->synced_records,
+            'failed_records' => $syncLog->failed_records,
+        ]);
     }
 
     public function failed(Throwable $e): void

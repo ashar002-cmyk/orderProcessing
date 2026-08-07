@@ -73,6 +73,7 @@ class ShopifyGraphqlService
      */
     public function getOrders(User $user, ?string $cursor = null, int $limit = 50): array
     {
+        $limit = max(1, min($limit, 250));
         $afterClause = $cursor ? ", after: \"{$cursor}\"" : '';
 
         $gql = <<<GQL
@@ -134,6 +135,25 @@ class ShopifyGraphqlService
             'hasNextPage' => $pageInfo['hasNextPage'] ?? false,
             'endCursor'   => $pageInfo['endCursor'] ?? null,
         ];
+    }
+
+    /** @return array<int, string> */
+    public function getGrantedAccessScopes(User $user): array
+    {
+        $data = $this->query($user, <<<'GQL'
+        {
+            currentAppInstallation {
+                accessScopes {
+                    handle
+                }
+            }
+        }
+        GQL);
+
+        return array_values(array_filter(array_column(
+            $data['currentAppInstallation']['accessScopes'] ?? [],
+            'handle'
+        )));
     }
 
     /**
