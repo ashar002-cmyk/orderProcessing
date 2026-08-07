@@ -5,6 +5,11 @@ use App\Http\Controllers\OrderController;
 use App\Http\Controllers\SyncLogController;
 use App\Http\Controllers\WebhookLogController;
 use Illuminate\Support\Facades\Route;
+use Osiset\ShopifyApp\Contracts\Queries\Shop;
+use Osiset\ShopifyApp\Messaging\Jobs\WebhookInstaller;
+use Osiset\ShopifyApp\Objects\Values\ShopDomain;
+use Osiset\ShopifyApp\Util;
+use App\Models\User;
 
 /*
 |--------------------------------------------------------------------------
@@ -53,3 +58,36 @@ Route::middleware(['verify.shopify'])->group(function () {
     Route::get('/settings', [DashboardController::class, 'settings'])->name('settings');
 });
 
+Route::get('/test-webhook', function () {
+    $user = User::find(3);
+    //dd($user);
+ $response = $user->api()->rest('GET', '/admin/api/2023-04/webhooks.json');
+    return json_encode($response,JSON_PRETTY_PRINT);
+});
+
+Route::get('/jobs-result2', function (Shop $query) {
+    $users = User::whereNotNull('password')->get();
+    $processed = 0;
+    $errors = [];
+    
+    foreach ($users as $user) {
+        try {
+            $shopName = ShopDomain::fromNative($user->name);
+            $shop = $query->getByDomain($shopName);
+            
+            if ($shop) {
+                $shopId = $shop->getId();
+                WebhookInstaller::dispatch($shopId, Util::getShopifyConfig('webhooks'));
+                $processed++;
+            }
+        } catch (\Exception $e) {
+            $errors[] = "User {$user->id} ({$user->name}): " . $e->getMessage();
+        }
+    }
+    
+    return response()->json([
+        'success' => true,
+        'message' => "Webhook reinstall dispatched for {$processed} users",
+        'errors' => $errors
+    ]);
+});
